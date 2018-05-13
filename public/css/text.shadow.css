@@ -1,0 +1,17 @@
+.xiaoli-text-shadow{
+    -webkit-animation-direction: normal;
+    -webkit-animation-duration: 15s;
+    -webkit-animation-iteration-count: infinite;
+    -webkit-animation-name: textShadow;
+    -webkit-animation-timing-function: ease;
+}
+@-webkit-keyframes textShadow {
+    0% {color: #39f;}
+    15% {color: #F246C9;}
+    30% {color: #4453F2;}
+    45% {color: #44F262;}
+    60% {color: #F257D4;}
+    75% {color: #EDF255;}
+    90% {color: #F20006;}
+    100% {color: #39f;}
+}

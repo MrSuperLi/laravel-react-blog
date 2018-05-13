@@ -1,0 +1,353 @@
+## --------------------------------------------
+## laravel后台辅助脚本
+## @author luyingru  luyr305@mingchao.com
+## @date 2016-12-14
+## --------------------------------------------
+
+#!/bin/bash
+
+## 默认帮助
+help_default()
+{
+    echo "使用语法: $0 cmd [params, ...]"
+    echo 'cmd包括: '
+    echo '      init_server'
+    echo '      update_server'
+    echo '      init_db_config'
+    echo '      init_nginx_conf'
+    echo '      update_auth'
+}
+
+## 初始化nginx的说明
+help_init_nginx_conf()
+{
+    echo "使用语法: $0 init_nginx_conf 类型debug|release|normal 主域名 本地目录"
+    echo "注意：这是个本地命令"
+    echo "配置位置为 /data/conf/nginx/vhost/"
+}
+
+## 更新服务器的说明
+help_update_server()
+{
+    echo "使用语法: $0 update_server 项目名 远程机器IP 远程目录 composer，如果不需要更新composer则最后一个参数不加 如果不发布CDN则无需加"
+    echo "eg:bash $0 update_server gameAdmin 192.168.8.41"
+    echo "eg:bash $0 update_server gameAdmin 192.168.8.41 root /data/mc/web/gameAdmin nocomposer"
+    echo "eg:bash $0 update_server gameAdmin 115.238.72.90 luyingru /data/webapp/gameAdmin nocomposer"
+}
+
+## 初始化服务器的说明
+help_init_server()
+{
+    echo "使用语法: $0 init_server 项目名 远程机器IP 用户名 域名类型[debug|release|normal] mingchao.com 远程目录"
+    echo "eg:bash $0 init_server gameAdmin 192.168.8.41"
+    echo "eg:bash $0 init_server gameAdmin 192.168.8.41 root debug|release|normal mingchao.com /data/mc/web/gameAdmin"
+    echo "eg:bash $0 init_server gameAdmin 115.238.72.90 luyingru debug|release|normal mingchao.com /data/webapp/gameAdmin"
+}
+
+
+## 初始化db配置的说明
+help_init_db_config()
+{
+    echo "使用语法: $0 init_db_config"
+    echo "会读取config/db.config.php的内容来创建数据库和数据库用户"
+}
+
+
+## 更新入口文件说明
+help_update_server_config() {
+   echo "使用语法: $0 update_server_config 项目名 远程目录"
+   echo "eg:bash $0 update_server_config gameAdmin /data/mc/web/gameAdmin"
+}
+
+help()
+{
+    CMD=$1
+    case $CMD in
+        init_nginx_conf) help_init_nginx_conf ;;
+        init_db_config) help_init_db_config ;;
+        update_server) help_update_server ;;
+        init_server) help_init_server ;;
+        *) help_default;;
+    esac
+    exit
+}
+
+## 初始化nginx配置
+init_nginx_conf()
+{
+    DOMAIN_TYPE=$1
+    DOMAIN=$2
+    case "$DOMAIN_TYPE" in
+        debug )
+            echo "开始创建debug配置"
+            DOMAIN_NAME="debug.gameadmin.${DOMAIN}"
+            ;;
+        release )
+            echo "开始创建release配置"
+            DOMAIN_NAME="release.gameadmin.${DOMAIN}"
+            ;;
+        normal )
+            echo "开发创建正式配置"
+            DOMAIN_NAME="gameadmin.${DOMAIN}"
+            ;;
+        * )
+            echo "自定义为${DOMAIN_TYPE}"
+            DOMAIN_NAME="${DOMAIN_TYPE}.gameadmin.${DOMAIN}"
+    esac
+
+    ROOT_DIR=$3
+    if [ "$DOMAIN_NAME" == "" -o "$ROOT_DIR" == "" ] ; then
+        help init_nginx_conf
+    fi
+    SRC_CONF=init/gameAdmin.conf.tpl
+    sudo mkdir -p /data/conf/nginx/vhost/
+    for name in $DOMAIN_NAME
+    do
+        DEST_CONFIG=/data/conf/nginx/vhost/${name}.conf
+        if [ -f $DEST_CONFIG ] ; then
+            echo "${DEST_CONFIG} 目标配置已存在"
+            continue
+        fi
+        sudo /bin/cp $SRC_CONF $DEST_CONFIG
+        sed -e "s/DOMAIN_NAME/${name}/g" -i $DEST_CONFIG
+        WWW_ROOT_DIR=`echo ${ROOT_DIR} | sed 's/\//\\\\\//g'`
+        sed -e "s/ROOT_DIR/${WWW_ROOT_DIR}\/public/g" -i $DEST_CONFIG
+    done
+    sudo /root/nginx_reload
+    echo 'nginx 配置初始化完成'
+}
+
+
+## 根据config/common.config.php的配置来初始化服务器配置
+init_db_config()
+{
+    cd init
+    /usr/bin/php init_db.php $1
+}
+
+## 更新项目权限
+update_auth()
+{
+    SERVER_DIR=$1
+    if [ "$SERVER_DIR" == "" ] ; then
+        echo "缺少目录参数"
+        exit
+    fi
+    echo "开始更新权限"
+    if cd ${SERVER_DIR}; then
+        chmod +x scripts/mctl
+        chmod 755 public -R
+        chown www:www public -R
+        chmod 755 storage -R
+        chown www:www storage -R
+        chown www:www bootstrap/cache
+        if [ -f storage/logs/laravel.log ] ; then
+            chmod 766 storage/logs/laravel.log
+        else
+            mkdir -p storage/logs
+            touch storage/logs/laravel.log
+            chmod 766 storage/logs/laravel.log
+        fi
+        echo "权限更新成功"
+    fi
+}
+
+
+## 根据IP更新某个CMS
+update_server()
+{
+    GameAdmin_NAME=$1                          ## 游戏名字：gameAdmin
+    IP=$2                                       ## 在这个IP机器上搭建 :192.168.8.41
+    PUBLISH_USER=$3                             ## 用户名
+    SERVER_DIR=$4                               ## 后台代码放到那个目录:/data/mc/web/gameAdmin
+    UPDATE_COMPOSER=$5                          ## 是否要更新vendor文件夹 composer
+
+    if [ "$UPDATE_COMPOSER" == "" ] ; then
+        UPDATE_COMPOSER="doNotUpdateComposer"
+    fi
+    fi
+        exit
+    fi
+    cd ../
+    ## 删除文件
+    rm -rf release
+    mkdir release
+    echo "正在打包database app public resources 目录"
+    chmod +x scripts/mctl           ## 这里要加上可执行，否则后面会有权限问题
+    /bin/cp -rf database app public resources scripts release
+    if [ "$UPDATE_COMPOSER" == "composer" ] ; then
+        echo "打包vendor"
+        /bin/cp -rf vendor release
+    else
+        echo "不打包vendor"
+    fi
+
+    ## 去除杂质
+    find release -type d -name "*git*" | xargs rm -rf
+    Date=`date "+%Y-%m-%d-%H%M%S"`
+    TAR_FILE=web.gameAdmin.$Date.tar.gz
+    ## 打包文件
+    cd release
+    if [ "$UPDATE_COMPOSER" == "composer" ] ; then
+        tar cfz $TAR_FILE database scripts app public resources vendor
+    else
+        tar cfz $TAR_FILE database scripts app public resources
+    fi
+
+    ssh -p61618 $PUBLISH_USER@$IP "sudo mkdir -p $SERVER_DIR;sudo mkdir -p /data/tmp/gameAdmin/${Date}"
+    if [ $? -gt 0 ] ; then
+        echo "远程创建目录失败"
+        exit
+    else
+        scp -P 61618 $TAR_FILE $PUBLISH_USER@$IP:/data/tmp
+    fi
+
+    if [ $? -gt 0 ] ; then
+        echo "scp 远程拷贝失败"
+        echo $SERVER_DIR
+        exit
+    else
+        if [ "$UPDATE_COMPOSER" == "composer" ] ; then
+        else
+        fi
+    fi
+
+     ## 更新目录权限
+     echo "开始更新目录权限"
+     ssh -p61618 $PUBLISH_USER@$IP "cd $SERVER_DIR/scripts && sudo ./mctl update_auth ${SERVER_DIR}"
+     if [ $? -gt 0 ] ; then
+        echo "目录权限更新失败"
+        exit
+     else
+        echo "目录权限更新完成"
+     fi
+
+    cd ../
+    rm -rf release/
+    echo "更新 $IP 完成"
+}
+
+## 初始化一个项目
+init_server()
+{
+    GameAdmin_NAME=$1           ## 游戏名
+    IP=$2                           ## 在这个IP机器上搭建 :192.168.8.41
+    PUBLISH_USER=$3                 ## 用户名
+    DOMAIN_TYPE=$4                  ## 类型： debug|release|normal
+    DOMAIN=$5                       ## 站点主域名：mingchao.com
+    SERVER_DIR=$6                   ## 后台代码放到那个目录:/data/mc/web/gameAdmin
+    LOG_DIR=/data/logs/
+    if [ "$1" == "" ] ; then
+        echo "项目名不能为空"
+        help init_server
+    fi
+    if [ "$2" == "" ] ; then
+        echo "ip不能为空"
+        help init_server
+    fi
+    ## 站点域名：gm.tgzt.mingchaoonline.com
+    if [ "$3" == "" ] ; then
+        echo "用户名不能为空"
+        help init_server
+    fi
+    if [ "$4" == "" ] ; then
+        echo "类型不能为空"
+    fi
+    if [ "$5" == "" ] ; then
+        echo "主域名不能为空"
+    fi
+    if [ "$6" == "" ] ; then
+        echo "目录不能为空"
+    fi
+    cd ../
+
+    ## 删除文件
+    echo "打包文件-开始"
+    rm -rf release
+    mkdir -p release
+    chmod +x scripts/mctl           ## 本地先加上执行权限
+    cp -rf .env.example app config vendor artisan database resources bootstrap server.php public scripts release
+    mv release/.env.example release/.env
+    ## 去除杂质
+    find release -type d -name "*git*" | xargs rm -rf
+    Date=`date "+%Y-%m-%d-%H%M%S"`
+    TAR_FILE=web.gameAdmin.$Date.tar.gz
+    ## 打包文件
+    cd release
+    tar cfz $TAR_FILE .env app config vendor artisan database resources bootstrap server.php public scripts
+
+    echo "打包文件-完成"
+    echo "远程创建目录-开始"
+
+    ssh -p61618 $PUBLISH_USER@$IP "sudo mkdir -p $SERVER_DIR"
+    if [ $? -gt 0 ] ; then
+        echo "远程创建目录失败"
+        exit
+    else
+        echo "远程创建目录-完成"
+        echo "远程copy文件-开始"
+        scp -P 61618 $TAR_FILE $PUBLISH_USER@$IP:/data/tmp
+    fi
+
+    if [ $? -gt 0 ] ; then
+        echo "远程copy文件失败"
+        exit
+    else
+        echo "远程copy文件-完成"
+        echo "远程文件操作-开始"
+        ssh -p61618 $PUBLISH_USER@$IP "sudo mv /data/tmp/${TAR_FILE} ${SERVER_DIR} &&
+            cd $SERVER_DIR &&
+            sudo tar xfz $TAR_FILE &&
+            sudo mv *.tar.gz /data/tmp &&
+            sudo mkdir -p storage/framework/sessions &&
+            sudo mkdir -p storage/framework/cache &&
+            sudo mkdir -p storage/framework/views
+        "
+    fi
+    if [ $? -gt 0 ] ; then
+        echo "远程文件操作失败"
+        exit
+    else
+        echo "远程文件操作成功"
+    fi
+
+    ## 更新目录权限
+        echo "开始更新目录权限"
+        ssh -p61618 $PUBLISH_USER@$IP "cd $SERVER_DIR/scripts && sudo ./mctl update_auth ${SERVER_DIR}"
+        if [ $? -gt 0 ] ; then
+            echo "目录权限更新失败"
+            exit
+        else
+            echo "目录权限更新完成"
+        fi
+
+    ## 初始化nginx 配置
+        echo "开始初始化nginx配置"
+        ssh -p61618 $PUBLISH_USER@$IP "cd $SERVER_DIR/scripts &&
+            sudo ./mctl init_nginx_conf ${DOMAIN_TYPE} ${DOMAIN} ${SERVER_DIR}
+        "
+        echo "nginx配置完成"
+    if [ $? -gt 0 ] ; then
+        echo "nginx配置失败"
+        exit
+    else
+        echo "初始化 $IP 完成"
+    fi
+    echo "初始化信息如下："
+    echo "HOSTS：${IP}   ${DOMAIN}"
+    echo "后台目录为：${SERVER_DIR}"
+}
+
+
+## 获取子shell命令
+TARGET=$1
+shift
+case $TARGET in
+    update_server) update_server $*;;
+    update_server_config) update_server_config $*;;
+    init_server) init_server $*;;
+    init_db_config) init_db_config $*;;
+    init_nginx_conf) init_nginx_conf $*;;
+    update_auth) update_auth $*;;
+    *) help $*;;
+esac

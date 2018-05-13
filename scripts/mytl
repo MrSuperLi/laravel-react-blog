@@ -1,0 +1,62 @@
+#!/bin/bash
+
+init_server(){
+	OBJECT_NAME=$1;        ##项目名
+    IP=$2;                 ##发布到IP地址
+    USER=$3;               ##用户名
+    DOMAIN=$4              ##站点域名
+    SERVER_DIR=$5          ##代码放置目录
+
+    if [ "$1" == "" ] ; then
+        echo "项目名不可为空";
+    fi
+}
+
+init_db_config(){
+
+}
+
+init_nginx_config(){
+
+}
+
+update_server(){
+
+}
+
+help_init_server(){
+    echo "init_server使用方法：";
+	echo "$0 init_server 项目名 远程机器IP 用户名  域名 远程目录";
+	echo "bahs $0 init_server reactBlog 192.168.146.141 root blog.xiao.com /data/blog/web";
+}
+
+help_update_server(){
+    echo "init_server使用方法：";
+    echo "$0 update_server 项目名 远程机器IP 用户名  远程目录 vender|noverder";
+    echo "bahs $0 init_server reactBlog 192.168.146.141 root  /data/blog/web novender";
+}
+
+help(){
+	cmd=$1;
+	case $cmd in
+	init_server) help_init_server $*;;
+	update_server) help_update_server $*;;
+	*) default_help;;
+	esac
+}
+
+default_help(){
+	echo "	$0 init_server";
+	echo "	$0 update_server";
+}
+
+TARGET=$1
+shift
+
+case $TARGET in
+	init_server) init_server $*;;
+	update_server) update_server $*;;
+	*) help $*;;
+esac
+
+

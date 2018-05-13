@@ -1,0 +1,9 @@
+vendor
+node_modules
+.env
+client/node_modules
+public/admin
+public/ueditor/upload
+id_rsa
+id_rsa.pub
+.idea
